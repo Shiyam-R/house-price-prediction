@@ -1,0 +1,45 @@
+# ============================================================
+# .gitignore — House Price Prediction API
+# ============================================================
+
+# ── Virtual environments ───────────────────────────────────
+# Never commit these — they're OS/machine-specific and are
+# rebuilt from requirements.txt, not tracked as source.
+venv/
+.venv/
+env/
+ENV/
+
+# ── Python bytecode / cache ─────────────────────────────────
+# Regenerated automatically on every run — never source code.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+
+# ── Environment variables / secrets ─────────────────────────
+# .env files hold local secrets (API keys, DB URLs, etc.) and
+# must never be committed. .env.example (a template with no
+# real values) is explicitly allowed via the "!" negation below.
+.env
+.env.*
+!.env.example
+
+# ── Logs ─────────────────────────────────────────────────────
+*.log
+
+# ── Test / coverage artifacts ───────────────────────────────
+.coverage
+htmlcov/
+.tox/
+
+# ── Jupyter ──────────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── OS / editor clutter ──────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

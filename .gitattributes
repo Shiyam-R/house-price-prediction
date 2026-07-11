@@ -1,0 +1,34 @@
+# ============================================================
+# .gitattributes — House Price Prediction API
+# ============================================================
+# Ensures every contributor and CI runner sees the same line
+# endings regardless of local OS or Git configuration, rather
+# than relying on each machine's individual autocrlf setting.
+
+# Default: let Git auto-detect text vs binary, and normalize
+# text files to LF when stored in the repository.
+* text=auto eol=lf
+
+# Explicitly force LF for files that are executed or parsed by
+# tools sensitive to line endings — source code, CI workflows,
+# and Docker-related files. This is what prevents CRLF from ever
+# reaching the embedded bash scripts inside ci.yml's `run:` blocks.
+*.py      text eol=lf
+*.yml     text eol=lf
+*.yaml    text eol=lf
+*.sh      text eol=lf
+Dockerfile     text eol=lf
+.dockerignore  text eol=lf
+.gitignore     text eol=lf
+.gitattributes text eol=lf
+
+# Data files — kept as LF text for consistency and clean diffs.
+*.csv text eol=lf
+*.txt text eol=lf
+
+# Binary files — never attempt line-ending conversion, and mark
+# explicitly binary so Git doesn't try to diff them as text.
+*.pkl  binary
+*.png  binary
+*.jpg  binary
+*.jpeg binary
