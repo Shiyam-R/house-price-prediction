@@ -1,0 +1,55 @@
+# ============================================================
+# .dockerignore — House Price Prediction API
+# ============================================================
+# Excludes files from the Docker BUILD CONTEXT entirely.
+# These files are never even sent to the Docker daemon,
+# let alone copied into the image.
+
+# Local virtual environment — never needed inside the container,
+# the Dockerfile builds its own isolated venv.
+venv/
+.venv/
+env/
+
+# Python bytecode / cache — regenerated automatically, never useful
+# to ship, and can even cause subtle bugs if stale .pyc files
+# from a different Python version end up in the image.
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Version control metadata — irrelevant to a running container
+.git/
+.gitignore
+.github/
+
+# Training data, notebooks, and plots — these matter for
+# reproducibility and portfolio value in the GitHub repo,
+# but the running API only needs artifacts/*.pkl, not raw data
+# or exploratory notebooks. Keeping these out significantly
+# reduces image size and build time.
+data/
+notebook/
+plots/
+
+# Tests are run in CI against the source code directly —
+# they don't need to ship inside the production image.
+tests/
+
+# Docs and project metadata — useful on GitHub, irrelevant at runtime
+README.md
+LICENSE
+Run commands.txt
+*.md
+
+# Docker's own files don't need to be inside the image they define
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Editor/OS clutter
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

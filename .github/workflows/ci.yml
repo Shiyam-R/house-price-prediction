@@ -1,0 +1,136 @@
+# ============================================================
+# CI PIPELINE — House Price Prediction API
+# ============================================================
+# Runs automatically on every push and every pull request.
+# Any failed step fails the whole pipeline (GitHub Actions default).
+#
+# Stages:
+#   1. Checkout code
+#   2. Setup Python
+#   3. Install dependencies
+#   4. Verify dependency graph is consistent
+#   5. Validate Python syntax
+#   6. Run unit tests (if a tests/ folder exists)
+#   7. Build the Docker image
+#      — this is the step that replaces local Docker Desktop
+#        verification, since GitHub-hosted runners already
+#        include Docker Engine.
+#   8. Run the built image as a real container and poll /health
+#      — proves the app actually starts and serves traffic,
+#        not just that the image assembled successfully.
+
+name: CI Pipeline
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. CHECKOUT ────────────────────────────────────────
+      # Pulls the repository contents onto the runner so later
+      # steps have the actual code/files to work with.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. SETUP PYTHON ────────────────────────────────────
+      # Installs the same Python version used in the Dockerfile
+      # and locally, so CI results reflect real-world behavior.
+      # cache: 'pip' caches downloaded packages between runs,
+      # meaningfully speeding up repeated CI runs.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      # ── 3. INSTALL DEPENDENCIES ────────────────────────────
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 4. VERIFY REQUIREMENTS INSTALL CORRECTLY ───────────
+      # pip check inspects installed packages for conflicting or
+      # missing dependency requirements — a successful `pip install`
+      # does not by itself guarantee a consistent environment.
+      - name: Verify dependency consistency
+        run: pip check
+
+      # ── 5. VALIDATE PYTHON SYNTAX ──────────────────────────
+      # Compiles every tracked .py file to catch syntax errors
+      # early, before attempting to run anything. venv/ and
+      # __pycache__/ are excluded since they're not source code
+      # you maintain (venv/ shouldn't even be committed).
+      - name: Validate Python syntax
+        run: |
+          find . -type f -name "*.py" \
+            -not -path "*/venv/*" \
+            -not -path "*/.venv/*" \
+            -not -path "*/__pycache__/*" \
+            -print0 | xargs -0 -n1 python -m py_compile
+
+      # ── 6. RUN UNIT TESTS (IF AVAILABLE) ───────────────────
+      # Runs pytest only if a tests/ directory exists. This keeps
+      # the pipeline green today and will automatically start
+      # enforcing real tests the moment a tests/ folder is added —
+      # no changes to this workflow file required later.
+      - name: Run unit tests
+        run: |
+          if [ -d "tests" ]; then
+            pip install pytest
+            pytest tests/ -v
+          else
+            echo "No tests/ directory found — skipping test execution."
+            echo "This step will activate automatically once tests/ is added."
+          fi
+
+      # ── 7. BUILD DOCKER IMAGE ───────────────────────────────
+      # ubuntu-latest runners come with Docker Engine pre-installed,
+      # so no extra setup action is needed here. This step is the
+      # authoritative verification that the Dockerfile is valid and
+      # the image builds successfully — replacing the local Docker
+      # Desktop check you can't run on this machine.
+      - name: Build Docker image
+        run: docker build -t house-price-api:${{ github.sha }} .
+
+      # ── 8. RUN CONTAINER AND VERIFY /health ────────────────
+      # A successful build only proves the image assembles correctly —
+      # it says nothing about whether the app actually starts and
+      # serves traffic. This step starts a real container from the
+      # image just built, polls the existing /health endpoint with
+      # retries (the container's own HEALTHCHECK has a 15s start
+      # grace period, so the app needs a moment to load the pickled
+      # artifacts), and fails the pipeline with container logs
+      # printed if the app never becomes reachable. The container
+      # is always cleaned up afterward, whether it passed or failed.
+      - name: Run container and verify health endpoint
+        run: |
+          docker run -d --name test-container -p 8000:8000 house-price-api:${{ github.sha }}
+
+          echo "Waiting for the API to become healthy..."
+          success=false
+          for i in $(seq 1 10); do
+            if curl -sf http://localhost:8000/health; then
+              echo ""
+              echo "Health check passed on attempt $i."
+              success=true
+              break
+            fi
+            echo "Attempt $i failed, retrying in 3s..."
+            sleep 3
+          done
+
+          if [ "$success" != "true" ]; then
+            echo "Health check never succeeded. Container logs:"
+            docker logs test-container
+            docker stop test-container
+            docker rm test-container
+            exit 1
+          fi
+
+          docker stop test-container
+          docker rm test-container
