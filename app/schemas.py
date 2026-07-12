@@ -188,3 +188,7 @@ class PredictionResponse(BaseModel):
     model_used: str = Field(
         description="Model used for prediction"
     )
+
+    api_version: str = Field(
+        description="API version that generated this prediction — useful for tracing predictions back to a specific deployed version"
+    )

@@ -9,6 +9,12 @@
 import pandas as pd
 import numpy as np
 import joblib
+import logging
+
+# Module-level logger — inherits configuration (level, format,
+# handlers) from whatever is set up in main.py at startup, so
+# this file doesn't need to configure logging itself.
+logger = logging.getLogger(__name__)
 
 class PredictionPipeline:
 
@@ -27,7 +33,7 @@ class PredictionPipeline:
         # Model RMSE in dollars — used to calculate price range
         self.model_rmse_dollars = 28050
 
-        print("Pipeline loaded successfully.")
+        logger.info("Pipeline loaded successfully — model, scaler, and encoding artifacts ready.")
 
     def engineer_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
