@@ -1,25 +1,35 @@
 # ============================================================
-# CI PIPELINE — House Price Prediction API
+# CI/CD PIPELINE — House Price Prediction API
 # ============================================================
 # Runs automatically on every push and every pull request.
 # Any failed step fails the whole pipeline (GitHub Actions default).
 #
-# Stages:
-#   1. Checkout code
-#   2. Setup Python
-#   3. Install dependencies
-#   4. Verify dependency graph is consistent
-#   5. Validate Python syntax
-#   6. Run unit tests (if a tests/ folder exists)
-#   7. Build the Docker image
-#      — this is the step that replaces local Docker Desktop
-#        verification, since GitHub-hosted runners already
-#        include Docker Engine.
-#   8. Run the built image as a real container and poll /health
-#      — proves the app actually starts and serves traffic,
-#        not just that the image assembled successfully.
+# Two jobs, run in sequence:
+#
+#   JOB 1 — build-and-test (runs on every push and PR)
+#     1. Checkout code
+#     2. Setup Python
+#     3. Install dependencies
+#     4. Verify dependency graph is consistent
+#     5. Validate Python syntax
+#     6. Run unit tests
+#     7. Build the Docker image
+#        — this is the step that replaces local Docker Desktop
+#          verification, since GitHub-hosted runners already
+#          include Docker Engine.
+#     8. Run the built image as a real container and poll /health
+#        — proves the app actually starts and serves traffic,
+#          not just that the image assembled successfully.
+#
+#   JOB 2 — publish-image (only on pushes to main, only if
+#           build-and-test fully passed)
+#     9. Log in to GitHub Container Registry (GHCR)
+#     10. Build and push the image, tagged :latest and :<commit-sha>
+#        — this is the actual CD step. Job 1 only PROVES the image
+#          works; job 2 makes it available for any other machine
+#          to pull and run via `docker pull`.
 
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -134,3 +144,60 @@ jobs:
 
           docker stop test-container
           docker rm test-container
+
+  # ── JOB 2 — PUBLISH IMAGE (CD) ──────────────────────────────
+  # This is the actual "Continuous Deployment" half of the pipeline.
+  # Job 1 only proves the image builds and runs correctly — the
+  # image itself is discarded the moment that job's runner shuts
+  # down. This job takes the same Dockerfile, rebuilds it, and
+  # pushes it to GitHub Container Registry (GHCR) so it becomes a
+  # real, pullable artifact any machine can retrieve with
+  # `docker pull` — not just something proven inside CI.
+  publish-image:
+    name: Publish Docker image to GHCR
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    # Only publish on pushes to main, and only after build-and-test
+    # has fully succeeded (the `needs:` line above already enforces
+    # this — this `if:` additionally ensures pull requests never
+    # publish an image, since PR code hasn't been merged/trusted yet).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # GHCR requires the image name to be lowercase, but GitHub
+      # usernames/repo names can contain uppercase letters (e.g.
+      # "Shiyam-R"). This converts it once and reuses it below.
+      - name: Prepare lowercase image name
+        run: echo "IMAGE_NAME_LOWER=$(echo '${{ github.repository }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
+
+      # Authenticates using GitHub's own built-in GITHUB_TOKEN —
+      # no separate account, secret, or password needs to be created
+      # or stored manually for this to work.
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Builds the image again (this runner is separate from job 1's)
+      # and pushes it under two tags:
+      #   :latest         — always the most recent successful build
+      #   :<commit-sha>    — a permanent, traceable snapshot, so a
+      #                      specific historical version can always
+      #                      be pulled back deliberately, not just
+      #                      whatever :latest happens to be today.
+      - name: Build and push image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ env.IMAGE_NAME_LOWER }}:latest
+            ghcr.io/${{ env.IMAGE_NAME_LOWER }}:${{ github.sha }}
