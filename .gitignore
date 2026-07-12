@@ -38,6 +38,13 @@ htmlcov/
 # ── Jupyter ──────────────────────────────────────────────────
 .ipynb_checkpoints/
 
+# ── Load test output ─────────────────────────────────────────
+# Locust's --csv flag generates report files locally; these are
+# run artifacts, not source, and shouldn't be committed.
+load_tests/*.csv
+load_tests/*_stats*.csv
+load_tests/*.log
+
 # ── OS / editor clutter ──────────────────────────────────────
 .DS_Store
 Thumbs.db

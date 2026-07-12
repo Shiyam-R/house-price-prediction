@@ -71,6 +71,9 @@ house-price-prediction/
 │       ├── metadata.json      # Machine-readable version, metrics, framework versions
 │       └── MODEL_CARD.md      # Human-readable documentation for this model version
 ├── tests/                   # Unit tests (run automatically in CI)
+├── load_tests/               # Locust load test + real measured results
+│   ├── locustfile.py
+│   └── LOAD_TEST_RESULTS.md
 ├── data/                     # Raw and processed datasets
 ├── notebook/                 # EDA, feature engineering, training, tuning
 ├── plots/                    # EDA and model evaluation visualizations
@@ -167,6 +170,16 @@ curl -X POST "http://localhost:8000/predict" \
 }
 ```
 *(Exact figures depend on the model's live output for this input.)*
+
+## Load Testing
+
+The API has been load-tested with [Locust](https://locust.io/) using randomized, schema-valid traffic against `/predict`, `/health`, and `/version`. See [`load_tests/LOAD_TEST_RESULTS.md`](load_tests/LOAD_TEST_RESULTS.md) for actual measured throughput/latency numbers, methodology, and an honest discussion of what those numbers do (and don't) represent.
+
+```bash
+pip install -r requirements-load.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000   # in one terminal
+locust -f load_tests/locustfile.py --host http://localhost:8000 --headless -u 50 -r 10 -t 60s   # in another
+```
 
 ## Running Tests
 

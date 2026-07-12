@@ -1,0 +1,12 @@
+# ============================================================
+# requirements-load.txt — Load testing dependencies
+# ============================================================
+# Only needed to RUN load tests locally against a running instance
+# of the API — never needed by the API itself or by CI's unit test
+# job. Kept separate from requirements.txt and requirements-dev.txt
+# so the Docker image and the regular test suite never pull in
+# load-testing tooling they don't use.
+#
+# Install with: pip install -r requirements-load.txt
+
+locust==2.45.0

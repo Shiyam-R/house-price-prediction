@@ -47,6 +47,12 @@ plots/
 tests/
 requirements-dev.txt
 
+# Load testing tooling and results are developer-facing only,
+# run against a live instance from OUTSIDE the container —
+# never needed inside the image itself.
+load_tests/
+requirements-load.txt
+
 # Docs and project metadata — useful on GitHub, irrelevant at runtime
 README.md
 LICENSE
