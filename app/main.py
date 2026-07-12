@@ -182,14 +182,22 @@ def predict_price(features: HouseFeatures):
 def root():
     """
     Root endpoint — API information and links.
+
+    Uses relative paths rather than a hardcoded host/port. The API
+    doesn't actually know where it's being accessed from — it could
+    be localhost, a Docker port mapping, a GitHub Codespaces forwarded
+    URL, or a real cloud deployment later. Hardcoding "127.0.0.1:8000"
+    would be wrong in every case except one specific local setup.
+    Relative paths resolve correctly against whatever host the
+    request actually came in on.
     """
     return {
         "message"  : "House Price Prediction API",
         "version"  : API_VERSION,
-        "docs"     : "http://127.0.0.1:8000/docs",
-        "health"   : "http://127.0.0.1:8000/health",
-        "version_info": "http://127.0.0.1:8000/version",
-        "predict"  : "POST http://127.0.0.1:8000/predict"
+        "docs"     : "/docs",
+        "health"   : "/health",
+        "version_info": "/version",
+        "predict"  : "POST /predict"
     }
 
 # ── RUN THE API (local dev fallback only) ──────────────────────
