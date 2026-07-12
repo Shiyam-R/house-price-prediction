@@ -6,12 +6,12 @@
 # and connects user requests to the prediction pipeline.
 
 import logging
-import os
 import platform
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from .schemas import HouseFeatures, PredictionResponse
 from .pipeline import PredictionPipeline
+from .config import settings
 
 # ── LOGGING CONFIGURATION ───────────────────────────────────
 # Configured once, at import time, so every module's logger
@@ -23,23 +23,15 @@ from .pipeline import PredictionPipeline
 # Format includes: timestamp, logger name, level, message —
 # enough to trace what happened, when, and where, without
 # needing a full observability stack for a project this size.
+# Level is now driven by settings.log_level (overridable via
+# LOG_LEVEL env var or .env), not hardcoded.
 logging.basicConfig(
-    level=logging.INFO,
+    level=settings.log_level,
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 API_VERSION = "1.0.0"
-
-# Which trained model version to load, e.g. "v1.0.0", "v1.1.0".
-# Reading this from an environment variable — rather than hardcoding
-# a path — is what makes model versioning actually useful: deploying
-# a new model version becomes "set MODEL_VERSION and restart",
-# not "edit source code and rebuild the image". Defaults to v1.0.0
-# so local runs and existing deployments keep working unchanged
-# if the variable isn't set.
-MODEL_VERSION = os.environ.get("MODEL_VERSION", "v1.0.0")
-ARTIFACTS_PATH = f"artifacts/{MODEL_VERSION}"
 
 # ── LIFESPAN — Load pipeline once at startup ──────────────────
 # @asynccontextmanager runs code before and after the API starts
@@ -52,9 +44,9 @@ pipeline = None  # global variable to hold the pipeline
 async def lifespan(app: FastAPI):
     # Code here runs BEFORE the API starts accepting requests
     global pipeline
-    logger.info("Loading prediction pipeline — model version: %s", MODEL_VERSION)
-    pipeline = PredictionPipeline(artifacts_path=ARTIFACTS_PATH)
-    logger.info("API started — pipeline ready. API version %s, model version %s", API_VERSION, MODEL_VERSION)
+    logger.info("Loading prediction pipeline — model version: %s", settings.model_version)
+    pipeline = PredictionPipeline(artifacts_path=settings.artifacts_path)
+    logger.info("API started — pipeline ready. API version %s, model version %s", API_VERSION, settings.model_version)
     yield
     # Code here runs AFTER the API shuts down (cleanup)
     logger.info("API shutting down.")
@@ -233,10 +225,8 @@ def root():
 # to run this app is from the project root:
 #     uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 # uvicorn is the ASGI server that runs FastAPI applications.
-# host="0.0.0.0"  → accessible from any network interface
-#                   needed for Docker to expose the port
-# host="127.0.0.1"→ localhost only (development)
-# port=8000       → the port the API listens on
+# host/port below come from settings (HOST/PORT env vars or .env),
+# defaulting to 0.0.0.0:8000 if unset.
 # reload=True     → auto-restart when code changes (development only)
 #                   never use reload=True in production/Docker
 
@@ -244,7 +234,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "app.main:app",
-        host="0.0.0.0",
-        port=8000,
+        host=settings.host,
+        port=settings.port,
         reload=True
     )

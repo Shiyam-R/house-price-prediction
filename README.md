@@ -33,6 +33,25 @@ This project isn't just a trained model in a notebook. It's the full path from r
 | CI/CD | GitHub Actions |
 | Testing | pytest |
 
+## Environment Configuration
+
+Configuration follows [12-factor app](https://12factor.net/config) principles — settings live in the environment, not hardcoded in source. All settings are optional with sensible defaults; the app runs identically with no `.env` file present.
+
+Copy the template to create your own local overrides:
+```bash
+cp .env.example .env
+```
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MODEL_VERSION` | `v1.0.0` | Which versioned model under `artifacts/` to load |
+| `ARTIFACTS_BASE_PATH` | `artifacts` | Base folder containing versioned model artifacts |
+| `LOG_LEVEL` | `INFO` | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
+| `HOST` / `PORT` | `0.0.0.0` / `8000` | Used only by the local-dev fallback (`python -m app.main`) |
+| `PORT` (Docker) | `8000` | Read directly by the Dockerfile's `CMD` at container start — respected automatically by platforms like Cloud Run/Render that inject their own `PORT` |
+
+See `app/config.py` for the full settings definition.
+
 ## Project Structure
 
 ```
@@ -40,7 +59,8 @@ house-price-prediction/
 ├── app/                    # FastAPI application (API layer)
 │   ├── main.py               # Endpoints: /, /health, /version, /predict
 │   ├── pipeline.py            # Feature engineering + inference logic
-│   └── schemas.py             # Pydantic request/response validation
+│   ├── schemas.py             # Pydantic request/response validation
+│   └── config.py               # Centralized settings (12-factor config via env/.env)
 ├── artifacts/                # Versioned model artifacts (see Model Versioning below)
 │   └── v1.0.0/
 │       ├── model.pkl
@@ -58,6 +78,7 @@ house-price-prediction/
 ├── Dockerfile                # Multi-stage, non-root, health-checked image
 ├── requirements.txt
 ├── requirements-dev.txt      # Test-only dependencies (pytest, httpx2)
+├── .env.example               # Template for local environment overrides
 └── README.md
 ```
 

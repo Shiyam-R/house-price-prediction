@@ -50,8 +50,17 @@ ENV PATH="/opt/venv/bin:$PATH"
 # PYTHONUNBUFFERED — forces stdout/stderr to be unbuffered, so your
 #   print() and log statements show up immediately in `docker logs`
 #   instead of being held in a buffer.
+# PORT — default listen port. Many deployment platforms (Google Cloud
+#   Run, Render, Railway, etc.) inject their own PORT value at
+#   container start and expect the process to listen on THAT, not a
+#   value baked into the image. Setting a default here via ENV means
+#   `docker run` works unchanged (falls back to 8000), while deploy
+#   platforms that pass -e PORT=xxxx are respected automatically —
+#   see CMD and HEALTHCHECK below, both of which read $PORT at
+#   runtime rather than having it hardcoded.
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PORT=8000
 
 # Create a dedicated non-root user and group to run the app as.
 # Running containers as root is an unnecessary security risk —
@@ -73,29 +82,39 @@ RUN chown -R appuser:appuser /app
 # including the container's actual runtime process.
 USER appuser
 
-# Documents that the container listens on port 8000.
+# Documents that the container listens on port 8000 by default.
 # This does NOT actually publish the port — that still requires
 # `-p 8000:8000` (or docker-compose `ports:`) at run time.
-# It's metadata for humans and tools like `docker inspect`.
+# It's metadata for humans and tools like `docker inspect`; EXPOSE
+# itself can't reference $PORT dynamically, so it documents the
+# default rather than whatever value is set at actual runtime.
 EXPOSE 8000
 
 # HEALTHCHECK lets Docker (and orchestrators like ECS/Kubernetes)
 # know whether the container is actually serving traffic, not just
 # "running". We hit the existing /health endpoint using Python's
 # stdlib urllib, since curl isn't installed on the slim image and
-# isn't worth adding just for this.
+# isn't worth adding just for this. Reads $PORT at check-time via
+# os.environ, so this stays correct even if a deploy platform
+# overrides the port at runtime.
 #   --interval    : how often to check
 #   --timeout     : how long to wait for a response
 #   --start-period: grace period after container start before
 #                   failures count (model loading takes a moment)
 #   --retries     : consecutive failures before marking "unhealthy"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+    CMD python -c "import os,urllib.request; urllib.request.urlopen(f'http://localhost:{os.environ.get(\"PORT\",\"8000\")}/health')" || exit 1
 
 # Launch the API using uvicorn against the app package (app.main:app),
 # matching the standard production invocation — not `python app/main.py`.
 # host=0.0.0.0 is required so the process accepts connections from
-# outside the container, not just from within it.
+# outside the container, not just from within it, and is NOT made
+# configurable — a container should always bind all interfaces
+# internally; host-level exposure is controlled externally via `-p`.
+# Shell form (not exec/JSON form) is used deliberately here so that
+# $PORT is substituted by the shell at container start, allowing
+# deploy platforms that inject their own PORT to work correctly
+# without any image rebuild.
 # No --reload here: that flag is a dev-only convenience and has no
 # place in a built image.
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn app.main:app --host 0.0.0.0 --port ${PORT}

@@ -19,6 +19,15 @@ __pycache__/
 *.pyo
 *.pyd
 
+# Environment files — configuration must come from the runtime
+# environment (docker run -e, or the deploy platform's own config),
+# never from a file baked into the image itself. This applies to
+# both real .env (which shouldn't exist in git anyway) and the
+# .env.example template — neither is consumed by the running app,
+# both are purely developer-facing documentation.
+.env
+.env.*
+
 # Version control metadata — irrelevant to a running container
 .git/
 .gitignore
