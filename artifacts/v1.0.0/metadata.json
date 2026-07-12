@@ -1,0 +1,24 @@
+{
+  "model_version": "v1.0.0",
+  "model_type": "XGBoost Regressor (hyperparameter-tuned)",
+  "trained_date": "2026-05-03",
+  "training_dataset": "Kaggle Ames Housing (train.csv)",
+  "feature_count": 250,
+  "metrics": {
+    "r2_score": 0.9005,
+    "rmse_dollars": 28050
+  },
+  "framework_versions": {
+    "xgboost": "3.2.0",
+    "scikit-learn": "1.8.0",
+    "pandas": "3.0.2",
+    "numpy": "2.4.4"
+  },
+  "artifacts": [
+    "model.pkl",
+    "scaler.pkl",
+    "train_means.pkl",
+    "encoded_columns.pkl",
+    "skewed_columns.pkl"
+  ]
+}

@@ -25,7 +25,20 @@ def test_predict_returns_expected_keys(pipeline, valid_payload):
         "predicted_price", "price_range", "confidence", "model_used"
     }
     assert set(result["price_range"].keys()) == {"low", "high"}
-    assert result["model_used"] == "XGBoost (tuned)"
+    assert result["model_used"] == pipeline.model_type
+
+
+def test_metadata_loaded_correctly(pipeline):
+    """
+    Verifies metadata.json was actually read and parsed, and that
+    the pipeline's derived attributes (model_version, model_type,
+    model_rmse_dollars) match what's in the file — not hardcoded
+    values that could silently drift from it.
+    """
+    assert pipeline.model_version == "v1.0.0"
+    assert "XGBoost" in pipeline.model_type
+    assert pipeline.model_rmse_dollars == pipeline.metadata["metrics"]["rmse_dollars"]
+    assert pipeline.metadata["metrics"]["r2_score"] == pytest.approx(0.9005)
 
 
 def test_predicted_price_is_positive(pipeline, valid_payload):

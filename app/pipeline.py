@@ -9,6 +9,7 @@
 import pandas as pd
 import numpy as np
 import joblib
+import json
 import logging
 
 # Module-level logger — inherits configuration (level, format,
@@ -18,11 +19,17 @@ logger = logging.getLogger(__name__)
 
 class PredictionPipeline:
 
-    def __init__(self, artifacts_path: str = "artifacts"):
+    def __init__(self, artifacts_path: str = "artifacts/v1.0.0"):
         """
         Loads all saved artifacts when the pipeline is created.
         This happens ONCE when the API starts — not on every request.
         Loading from disk on every request would make the API slow.
+
+        artifacts_path now points to a VERSIONED subfolder
+        (e.g. "artifacts/v1.0.0"), not a flat "artifacts" folder.
+        This is what allows multiple model versions to coexist on
+        disk and be selected via the MODEL_VERSION environment
+        variable in main.py, without any code changes here.
         """
         self.model = joblib.load(f"{artifacts_path}/model.pkl")
         self.scaler = joblib.load(f"{artifacts_path}/scaler.pkl")
@@ -30,10 +37,25 @@ class PredictionPipeline:
         self.encoded_columns = joblib.load(f"{artifacts_path}/encoded_columns.pkl")
         self.skewed_columns = joblib.load(f"{artifacts_path}/skewed_columns.pkl")
 
-        # Model RMSE in dollars — used to calculate price range
-        self.model_rmse_dollars = 28050
+        # Load this version's metadata.json — the single source of
+        # truth for the model's reported metrics and identity. RMSE
+        # and model type are read from here rather than hardcoded,
+        # so the API can never silently drift out of sync with what
+        # this specific model version actually is.
+        with open(f"{artifacts_path}/metadata.json") as f:
+            self.metadata = json.load(f)
 
-        logger.info("Pipeline loaded successfully — model, scaler, and encoding artifacts ready.")
+        self.model_version = self.metadata["model_version"]
+        self.model_type = self.metadata["model_type"]
+
+        # Model RMSE in dollars — used to calculate price range.
+        # Sourced from metadata.json, not hardcoded.
+        self.model_rmse_dollars = self.metadata["metrics"]["rmse_dollars"]
+
+        logger.info(
+            "Pipeline loaded successfully — model version %s (%s) ready.",
+            self.model_version, self.model_type
+        )
 
     def engineer_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -167,5 +189,5 @@ class PredictionPipeline:
                 "high": f"${high:,.0f}"
             },
             "confidence": confidence,
-            "model_used": "XGBoost (tuned)"
+            "model_used": self.model_type
         }

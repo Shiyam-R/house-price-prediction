@@ -35,8 +35,11 @@ def pipeline():
     A standalone PredictionPipeline instance, used to test
     pipeline logic directly without going through the API layer.
     Also session-scoped for the same reason as `client` above.
+    Points at the same versioned artifacts path the API itself
+    would load by default (v1.0.0), keeping this fixture in sync
+    with real deployment behavior.
     """
-    return PredictionPipeline(artifacts_path="artifacts")
+    return PredictionPipeline(artifacts_path="artifacts/v1.0.0")
 
 
 @pytest.fixture

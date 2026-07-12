@@ -6,6 +6,7 @@
 # and connects user requests to the prediction pipeline.
 
 import logging
+import os
 import platform
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
@@ -29,7 +30,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 API_VERSION = "1.0.0"
-MODEL_NAME = "XGBoost (tuned)"
+
+# Which trained model version to load, e.g. "v1.0.0", "v1.1.0".
+# Reading this from an environment variable — rather than hardcoding
+# a path — is what makes model versioning actually useful: deploying
+# a new model version becomes "set MODEL_VERSION and restart",
+# not "edit source code and rebuild the image". Defaults to v1.0.0
+# so local runs and existing deployments keep working unchanged
+# if the variable isn't set.
+MODEL_VERSION = os.environ.get("MODEL_VERSION", "v1.0.0")
+ARTIFACTS_PATH = f"artifacts/{MODEL_VERSION}"
 
 # ── LIFESPAN — Load pipeline once at startup ──────────────────
 # @asynccontextmanager runs code before and after the API starts
@@ -42,9 +52,9 @@ pipeline = None  # global variable to hold the pipeline
 async def lifespan(app: FastAPI):
     # Code here runs BEFORE the API starts accepting requests
     global pipeline
-    logger.info("Loading prediction pipeline and model artifacts...")
-    pipeline = PredictionPipeline(artifacts_path="artifacts")
-    logger.info("API started — pipeline ready. Version %s", API_VERSION)
+    logger.info("Loading prediction pipeline — model version: %s", MODEL_VERSION)
+    pipeline = PredictionPipeline(artifacts_path=ARTIFACTS_PATH)
+    logger.info("API started — pipeline ready. API version %s, model version %s", API_VERSION, MODEL_VERSION)
     yield
     # Code here runs AFTER the API shuts down (cleanup)
     logger.info("API shutting down.")
@@ -66,6 +76,10 @@ app = FastAPI(
     ## Model Performance
     - R² Score : 0.9005
     - RMSE     : $28,050
+
+    See **/version** for the live, authoritative values for whichever
+    model version is actually currently loaded — the figures above
+    describe v1.0.0 and may not reflect a different deployed version.
     """,
     version=API_VERSION,
     lifespan=lifespan
@@ -84,14 +98,17 @@ app = FastAPI(
 def health_check():
     """
     Health check endpoint.
-    Returns status and model information.
+    Returns status and model information, sourced live from the
+    loaded model's metadata.json — not hardcoded — so this can
+    never silently drift out of sync with the actual deployed model.
     Used by Docker healthcheck and CI/CD pipeline.
     """
     return {
         "status"     : "healthy",
-        "model"      : MODEL_NAME,
-        "r2_score"   : 0.9005,
-        "rmse_dollars": "$28,050"
+        "model"      : pipeline.model_type,
+        "model_version": pipeline.model_version,
+        "r2_score"   : pipeline.metadata["metrics"]["r2_score"],
+        "rmse_dollars": f"${pipeline.metadata['metrics']['rmse_dollars']:,}"
     }
 
 # ── ENDPOINT 2 — VERSION ──────────────────────────────────────
@@ -104,11 +121,18 @@ def health_check():
 def version_info():
     """
     Version endpoint.
-    Returns API version, model identifier, and runtime info.
+    Returns API version, model version and metrics, and runtime info.
+    Model details are read live from the loaded metadata.json,
+    giving true traceability: this always reflects exactly which
+    trained model is actually serving predictions right now, not
+    a value that has to be manually kept in sync in source code.
     """
     return {
         "api_version": API_VERSION,
-        "model_used": MODEL_NAME,
+        "model_version": pipeline.model_version,
+        "model_type": pipeline.model_type,
+        "trained_date": pipeline.metadata.get("trained_date"),
+        "metrics": pipeline.metadata["metrics"],
         "python_version": platform.python_version()
     }
 

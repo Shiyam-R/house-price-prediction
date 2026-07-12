@@ -41,21 +41,37 @@ house-price-prediction/
 │   ├── main.py               # Endpoints: /, /health, /version, /predict
 │   ├── pipeline.py            # Feature engineering + inference logic
 │   └── schemas.py             # Pydantic request/response validation
-├── artifacts/               # Trained model + preprocessing objects
-│   ├── model.pkl
-│   ├── scaler.pkl
-│   ├── train_means.pkl
-│   ├── encoded_columns.pkl
-│   └── skewed_columns.pkl
+├── artifacts/                # Versioned model artifacts (see Model Versioning below)
+│   └── v1.0.0/
+│       ├── model.pkl
+│       ├── scaler.pkl
+│       ├── train_means.pkl
+│       ├── encoded_columns.pkl
+│       ├── skewed_columns.pkl
+│       ├── metadata.json      # Machine-readable version, metrics, framework versions
+│       └── MODEL_CARD.md      # Human-readable documentation for this model version
 ├── tests/                   # Unit tests (run automatically in CI)
 ├── data/                     # Raw and processed datasets
 ├── notebook/                 # EDA, feature engineering, training, tuning
 ├── plots/                    # EDA and model evaluation visualizations
-├── .github/workflows/ci.yml  # CI pipeline: install → test → build → verify
+├── .github/workflows/ci.yml  # CI/CD: install → test → build → verify → publish
 ├── Dockerfile                # Multi-stage, non-root, health-checked image
 ├── requirements.txt
+├── requirements-dev.txt      # Test-only dependencies (pytest, httpx2)
 └── README.md
 ```
+
+## Model Versioning
+
+Trained model artifacts are versioned by folder, not just tracked as loose files. Each version under `artifacts/` (e.g. `v1.0.0/`) is self-contained: the trained artifacts themselves, a machine-readable `metadata.json` (version, metrics, framework versions), and a human-readable `MODEL_CARD.md` documenting intended use, features, and limitations.
+
+The API selects which version to serve via the `MODEL_VERSION` environment variable (defaults to `v1.0.0`):
+```bash
+MODEL_VERSION=v1.0.0 uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+`/health` and `/version` read metrics directly from the loaded version's `metadata.json` — they always reflect exactly what's actually running, not a value someone has to remember to update in source code separately.
+
+See [`artifacts/v1.0.0/MODEL_CARD.md`](artifacts/v1.0.0/MODEL_CARD.md) for full model documentation, including intended use and known limitations.
 
 ## Running Locally (without Docker)
 
@@ -124,8 +140,9 @@ curl -X POST "http://localhost:8000/predict" \
     "low": "$180,450.00",
     "high": "$236,550.00"
   },
-  "confidence": "High (R² = 0.90)",
-  "model_used": "XGBoost (tuned)"
+  "confidence": "high",
+  "model_used": "XGBoost Regressor (hyperparameter-tuned)",
+  "api_version": "1.0.0"
 }
 ```
 *(Exact figures depend on the model's live output for this input.)*
