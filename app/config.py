@@ -39,6 +39,15 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # Drift monitor tuning. window_size = how many recent requests
+    # to keep per tracked feature; z_threshold = how many baseline
+    # standard deviations away from the training mean counts as
+    # "drifting". Overridable so this can be tuned per-deployment
+    # without a code change (e.g. a higher-traffic deployment might
+    # want a larger window for a more stable signal).
+    drift_window_size: int = 500
+    drift_z_threshold: float = 2.0
+
     # SettingsConfigDict tells pydantic-settings to also read from a
     # .env file if one exists in the working directory, in addition
     # to real environment variables (which always take priority over

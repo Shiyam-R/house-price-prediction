@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from .schemas import HouseFeatures, PredictionResponse
 from .pipeline import PredictionPipeline
 from .config import settings
+from .drift_monitor import DriftMonitor
 
 # ── LOGGING CONFIGURATION ───────────────────────────────────
 # Configured once, at import time, so every module's logger
@@ -39,13 +40,23 @@ API_VERSION = "1.0.0"
 # This makes predictions fast — no disk reads per request
 
 pipeline = None  # global variable to hold the pipeline
+drift_monitor = None  # global variable to hold the drift monitor
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Code here runs BEFORE the API starts accepting requests
-    global pipeline
+    global pipeline, drift_monitor
     logger.info("Loading prediction pipeline — model version: %s", settings.model_version)
     pipeline = PredictionPipeline(artifacts_path=settings.artifacts_path)
+
+    drift_monitor = DriftMonitor(
+        baseline_path=f"{settings.artifacts_path}/baseline_stats.json",
+        window_size=settings.drift_window_size,
+        z_threshold=settings.drift_z_threshold,
+    )
+    logger.info("Drift monitor ready — tracking %d features, window size %d",
+                len(drift_monitor.baseline), settings.drift_window_size)
+
     logger.info("API started — pipeline ready. API version %s, model version %s", API_VERSION, settings.model_version)
     yield
     # Code here runs AFTER the API shuts down (cleanup)
@@ -128,6 +139,25 @@ def version_info():
         "python_version": platform.python_version()
     }
 
+
+@app.get("/drift")
+def drift_report():
+    """
+    Lightweight drift monitoring endpoint. Compares the rolling
+    mean of recent /predict inputs against this model version's
+    training-time baseline (artifacts/<version>/baseline_stats.json)
+    for each tracked numeric feature, and flags features whose
+    live mean has moved more than z_threshold baseline standard
+    deviations away from the training mean.
+
+    This is an in-memory, single-process signal — see
+    app/drift_monitor.py for its deliberate scope and limitations.
+    Intended as a lightweight "is something obviously off" check,
+    not a replacement for a dedicated drift-monitoring system in
+    a real multi-instance production deployment.
+    """
+    return drift_monitor.get_report()
+
 # ── ENDPOINT 3 — PREDICTION ───────────────────────────────────
 # POST /predict → main endpoint
 # Receives HouseFeatures (validated by Pydantic automatically)
@@ -160,6 +190,13 @@ def predict_price(features: HouseFeatures):
         # Convert Pydantic model to dict
         # .model_dump() extracts all fields as a Python dictionary
         input_data = features.model_dump()
+
+        # Record numeric feature values for drift monitoring. This
+        # happens on every VALIDATED request (Pydantic already
+        # confirmed the input is well-formed) — recording invalid
+        # requests would pollute the drift signal with malformed
+        # data rather than reflecting real traffic patterns.
+        drift_monitor.record(input_data)
 
         # Run full prediction pipeline
         # pipeline was loaded once at startup — reused here
@@ -213,6 +250,7 @@ def root():
         "docs"     : "/docs",
         "health"   : "/health",
         "version_info": "/version",
+        "drift"    : "/drift",
         "predict"  : "POST /predict"
     }
 

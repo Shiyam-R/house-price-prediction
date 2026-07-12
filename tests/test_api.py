@@ -81,3 +81,28 @@ def test_predict_rejects_get_requests(client):
     """
     response = client.get("/predict")
     assert response.status_code == 405
+
+
+def test_drift_endpoint_reflects_recorded_predictions(client, valid_payload):
+    """
+    Confirms /drift is actually wired into the real request flow —
+    not just tested in isolation against DriftMonitor directly.
+    Sends a real prediction through the full HTTP stack, then
+    checks the drift report's sample count increased accordingly.
+
+    Note: `client` is session-scoped and shared across the whole
+    test run, so other tests may have already recorded predictions
+    before this one runs — sample_size is read directly (it's
+    always present, regardless of "status") rather than assumed
+    to start at zero.
+    """
+    before_samples = client.get("/drift").json()["features"]["OverallQual"]["sample_size"]
+
+    client.post("/predict", json=valid_payload)
+
+    after = client.get("/drift").json()
+    after_samples = after["features"]["OverallQual"]["sample_size"]
+
+    assert after_samples == before_samples + 1
+    assert "features_drifting" in after
+    assert "total_features_tracked" in after

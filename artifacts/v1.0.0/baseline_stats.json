@@ -1,0 +1,86 @@
+{
+  "TotalBsmtSF": {
+    "mean": 1057.4295,
+    "std": 438.7053,
+    "min": 0.0,
+    "max": 6110.0
+  },
+  "FirstFlrSF": {
+    "mean": 1162.6267,
+    "std": 386.5877,
+    "min": 334.0,
+    "max": 4692.0
+  },
+  "SecondFlrSF": {
+    "mean": 346.9925,
+    "std": 436.5284,
+    "min": 0.0,
+    "max": 2065.0
+  },
+  "YearBuilt": {
+    "mean": 1971.2678,
+    "std": 30.2029,
+    "min": 1872.0,
+    "max": 2010.0
+  },
+  "YrSold": {
+    "mean": 2007.8158,
+    "std": 1.3281,
+    "min": 2006.0,
+    "max": 2010.0
+  },
+  "OverallQual": {
+    "mean": 6.0993,
+    "std": 1.383,
+    "min": 1.0,
+    "max": 10.0
+  },
+  "OverallCond": {
+    "mean": 5.5753,
+    "std": 1.1128,
+    "min": 1.0,
+    "max": 9.0
+  },
+  "GarageCars": {
+    "mean": 1.7671,
+    "std": 0.7473,
+    "min": 0.0,
+    "max": 4.0
+  },
+  "Fireplaces": {
+    "mean": 0.613,
+    "std": 0.6447,
+    "min": 0.0,
+    "max": 3.0
+  },
+  "KitchenAbvGr": {
+    "mean": 1.0466,
+    "std": 0.2203,
+    "min": 0.0,
+    "max": 3.0
+  },
+  "FullBath": {
+    "mean": 1.5651,
+    "std": 0.5509,
+    "min": 0.0,
+    "max": 3.0
+  },
+  "HalfBath": {
+    "mean": 0.3829,
+    "std": 0.5029,
+    "min": 0.0,
+    "max": 2.0
+  },
+  "BsmtFullBath": {
+    "mean": 0.4253,
+    "std": 0.5189,
+    "min": 0.0,
+    "max": 3.0
+  },
+  "BsmtHalfBath": {
+    "mean": 0.0575,
+    "std": 0.2388,
+    "min": 0.0,
+    "max": 2.0
+  }
+}

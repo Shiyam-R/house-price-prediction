@@ -40,7 +40,7 @@ This model is intended to provide an **estimated price range** for single-family
 ## Limitations
 
 - **Geographic and temporal scope**: trained exclusively on Ames, Iowa sales data. Predictions for other markets, or for the current real-world housing market, are extrapolations outside the model's training distribution and should not be trusted at face value.
-- **No drift detection**: nothing in this system currently monitors whether live prediction inputs are drifting away from the training data's distribution over time.
+- **Lightweight drift monitoring only**: `/drift` tracks a rolling in-memory window of recent numeric inputs against this version's training baseline (`baseline_stats.json`), using a simple z-score signal. It resets on restart and — in a multi-worker or multi-replica deployment — each process keeps its own independent view rather than a shared one. It also only covers numeric features, not categorical drift. This is real, working visibility, not a substitute for a dedicated drift-monitoring system (e.g. Evidently, whylogs) in a genuine multi-instance production deployment.
 - **No fairness/bias audit** has been performed on this model with respect to protected characteristics or proxy variables (e.g. zoning, neighborhood-correlated features).
 - **Static artifacts**: this model does not retrain or update automatically. A new version (e.g. `v1.1.0`) would need to be trained and registered separately — see **Versioning** below.
 
@@ -49,6 +49,7 @@ This model is intended to provide an **estimated price range** for single-family
 Each model version lives in its own subfolder under `artifacts/`, e.g. `artifacts/v1.0.0/`, containing:
 - The trained artifacts (`model.pkl`, `scaler.pkl`, `train_means.pkl`, `encoded_columns.pkl`, `skewed_columns.pkl`)
 - `metadata.json` — machine-readable version, metrics, and framework versions, read directly by the API at startup and exposed via `/version` and `/health`
+- `baseline_stats.json` — per-feature training-data statistics (mean/std/min/max), used by `/drift` to detect when live traffic is diverging from what this version was actually trained on. Generated via `scripts/compute_baseline_stats.py`.
 - `MODEL_CARD.md` — this file, documenting that specific version in human-readable form
 
 The API selects which version to load via the `MODEL_VERSION` environment variable (defaults to `v1.0.0` if unset — see `app/main.py`). To deploy a new model version without touching code:

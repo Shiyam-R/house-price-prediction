@@ -53,6 +53,11 @@ requirements-dev.txt
 load_tests/
 requirements-load.txt
 
+# Offline/build-time scripts (e.g. computing drift baselines from
+# raw training data) are run manually when preparing a model
+# version, never at container runtime.
+scripts/
+
 # Docs and project metadata — useful on GitHub, irrelevant at runtime
 README.md
 LICENSE
