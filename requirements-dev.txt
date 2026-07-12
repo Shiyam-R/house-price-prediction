@@ -1,0 +1,16 @@
+# ============================================================
+# requirements-dev.txt — Development / Testing dependencies
+# ============================================================
+# These packages are needed to RUN TESTS, but not to run the
+# API itself in production. Keeping them separate from
+# requirements.txt means the Docker image (built from
+# requirements.txt only) never installs pytest or test tooling
+# it will never use — smaller image, smaller attack surface.
+#
+# Install with: pip install -r requirements-dev.txt
+# (this also installs everything in requirements.txt, via -r below)
+
+-r requirements.txt
+
+pytest==9.1.1
+httpx2==2.5.0

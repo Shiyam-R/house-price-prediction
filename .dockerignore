@@ -36,6 +36,7 @@ plots/
 # Tests are run in CI against the source code directly —
 # they don't need to ship inside the production image.
 tests/
+requirements-dev.txt
 
 # Docs and project metadata — useful on GitHub, irrelevant at runtime
 README.md
