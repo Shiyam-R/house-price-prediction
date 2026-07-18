@@ -4,7 +4,7 @@
 # Runs automatically on every push and every pull request.
 # Any failed step fails the whole pipeline (GitHub Actions default).
 #
-# Two jobs, run in sequence:
+# Three jobs:
 #
 #   JOB 1 — build-and-test (runs on every push and PR)
 #     1. Checkout code
@@ -21,13 +21,24 @@
 #        — proves the app actually starts and serves traffic,
 #          not just that the image assembled successfully.
 #
-#   JOB 2 — publish-image (only on pushes to main, only if
-#           build-and-test fully passed)
-#     9. Log in to GitHub Container Registry (GHCR)
-#     10. Build and push the image, tagged :latest and :<commit-sha>
+#   JOB 2 — security-scan (runs in parallel with build-and-test,
+#           on every push and PR)
+#     9. Scan Python dependencies with pip-audit (requirements.txt,
+#        requirements-dev.txt, requirements-load.txt) against the
+#        OSV vulnerability database
+#     10. Build the image and scan it with Trivy for OS-level
+#         package vulnerabilities in the base image — pip-audit
+#         only sees Python packages, not the underlying Debian
+#         packages python:3.13-slim ships with
+#
+#   JOB 3 — publish-image (only on pushes to main, only if BOTH
+#           build-and-test AND security-scan fully passed)
+#     11. Log in to GitHub Container Registry (GHCR)
+#     12. Build and push the image, tagged :latest and :<commit-sha>
 #        — this is the actual CD step. Job 1 only PROVES the image
-#          works; job 2 makes it available for any other machine
-#          to pull and run via `docker pull`.
+#          works; job 3 makes it available for any other machine
+#          to pull and run via `docker pull`. A real vulnerability
+#          finding in job 2 now blocks this from happening at all.
 
 name: CI/CD Pipeline
 
@@ -145,7 +156,71 @@ jobs:
           docker stop test-container
           docker rm test-container
 
-  # ── JOB 2 — PUBLISH IMAGE (CD) ──────────────────────────────
+  # ── JOB 2 — SECURITY SCAN ────────────────────────────────────
+  # Runs independently of build-and-test (no `needs:`), so it
+  # doesn't wait on it — security scanning doesn't require the
+  # app to already be proven working first. Two layers are
+  # checked, since neither alone covers the other:
+  #   - pip-audit: Python package vulnerabilities (requirements*.txt)
+  #   - Trivy: OS-level package vulnerabilities in the built image's
+  #     base layer (python:3.13-slim), which pip-audit cannot see
+  #     since those aren't Python packages at all.
+  security-scan:
+    name: Security scan (dependencies + image)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # ── PYTHON DEPENDENCY SCAN (pip-audit) ──────────────────
+      # Checks every requirements file against the OSV vulnerability
+      # database — not just requirements.txt (what ships in the
+      # image), but also requirements-dev.txt and requirements-load.txt,
+      # since a vulnerable dev/test-tooling dependency is still a
+      # real supply-chain risk on any machine that installs it,
+      # even though it never reaches the production image itself.
+      - name: Install pip-audit
+        run: pip install --no-cache-dir pip-audit
+
+      - name: Audit requirements.txt (production dependencies)
+        run: pip-audit -r requirements.txt
+
+      - name: Audit requirements-dev.txt (test tooling)
+        run: pip-audit -r requirements-dev.txt
+
+      - name: Audit requirements-load.txt (load testing tooling)
+        run: pip-audit -r requirements-load.txt
+
+      # ── CONTAINER IMAGE SCAN (Trivy) ────────────────────────
+      # Builds the image (a separate build from job 1's — GitHub
+      # Actions runners don't share filesystem state between jobs)
+      # and scans it for known vulnerabilities in OS-level packages
+      # inherited from the python:3.13-slim base image, which
+      # pip-audit has no visibility into at all.
+      - name: Build Docker image for scanning
+        run: docker build -t house-price-api:scan-${{ github.sha }} .
+
+      # severity is scoped to CRITICAL and HIGH only — scanning the
+      # full base OS image and failing on every LOW/MEDIUM finding
+      # produces enough noise that real findings get ignored. This
+      # keeps the check meaningful rather than something to click
+      # past. exit-code: 1 means a genuine CRITICAL/HIGH finding
+      # fails the pipeline, not just prints a report nobody reads.
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: house-price-api:scan-${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+  # ── JOB 3 — PUBLISH IMAGE (CD) ──────────────────────────────
   # This is the actual "Continuous Deployment" half of the pipeline.
   # Job 1 only proves the image builds and runs correctly — the
   # image itself is discarded the moment that job's runner shuts
@@ -156,11 +231,12 @@ jobs:
   publish-image:
     name: Publish Docker image to GHCR
     runs-on: ubuntu-latest
-    needs: build-and-test
-    # Only publish on pushes to main, and only after build-and-test
-    # has fully succeeded (the `needs:` line above already enforces
-    # this — this `if:` additionally ensures pull requests never
-    # publish an image, since PR code hasn't been merged/trusted yet).
+    needs: [build-and-test, security-scan]
+    # Only publish on pushes to main, and only after BOTH
+    # build-and-test AND security-scan have fully succeeded (the
+    # `needs:` line above enforces this) — this `if:` additionally
+    # ensures pull requests never publish an image, since PR code
+    # hasn't been merged/trusted yet.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
