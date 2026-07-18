@@ -7,6 +7,8 @@
 
 import logging
 import platform
+import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, HTTPException
 from contextlib import asynccontextmanager
 from .schemas import HouseFeatures, PredictionResponse
@@ -41,11 +43,12 @@ API_VERSION = "1.0.0"
 
 pipeline = None  # global variable to hold the pipeline
 drift_monitor = None  # global variable to hold the drift monitor
+predict_executor = None  # global variable to hold the prediction thread pool
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Code here runs BEFORE the API starts accepting requests
-    global pipeline, drift_monitor
+    global pipeline, drift_monitor, predict_executor
     logger.info("Loading prediction pipeline — model version: %s", settings.model_version)
     pipeline = PredictionPipeline(artifacts_path=settings.artifacts_path)
 
@@ -57,10 +60,23 @@ async def lifespan(app: FastAPI):
     logger.info("Drift monitor ready — tracking %d features, window size %d",
                 len(drift_monitor.baseline), settings.drift_window_size)
 
+    # Explicit thread pool for CPU-bound /predict work, sized via
+    # settings rather than relying on FastAPI/Starlette's hidden
+    # default. See config.py for the sizing rationale, and
+    # load_tests/LOAD_TEST_RESULTS.md for the load test that
+    # motivated this change (12s median latency under 1000
+    # concurrent users, traced to thread-pool queuing).
+    predict_executor = ThreadPoolExecutor(
+        max_workers=settings.predict_thread_pool_size,
+        thread_name_prefix="predict-worker"
+    )
+    logger.info("Prediction thread pool ready — max_workers=%d", settings.predict_thread_pool_size)
+
     logger.info("API started — pipeline ready. API version %s, model version %s", API_VERSION, settings.model_version)
     yield
     # Code here runs AFTER the API shuts down (cleanup)
     logger.info("API shutting down.")
+    predict_executor.shutdown(wait=True)
 
 # ── CREATE FASTAPI APP ────────────────────────────────────────
 # title, description, version appear in the auto-generated docs
@@ -164,7 +180,7 @@ def drift_report():
 # Returns PredictionResponse
 
 @app.post("/predict", response_model=PredictionResponse)
-def predict_price(features: HouseFeatures):
+async def predict_price(features: HouseFeatures):
     """
     Predicts house sale price from raw house features.
 
@@ -177,6 +193,13 @@ def predict_price(features: HouseFeatures):
     - Log transformation of skewed features
     - Standard scaling
     - Prediction and inverse transformation to dollar value
+
+    This endpoint is `async def`, but the actual model inference
+    (pandas + XGBoost — genuinely CPU-bound work) is explicitly
+    offloaded to a dedicated, sized ThreadPoolExecutor via
+    run_in_executor, rather than left to FastAPI's hidden default
+    sync-endpoint thread pool. See config.py's predict_thread_pool_size
+    for the sizing rationale.
     """
     # Log a compact summary of the request, not the full payload —
     # enough to trace request volume and rough input shape without
@@ -196,11 +219,18 @@ def predict_price(features: HouseFeatures):
         # confirmed the input is well-formed) — recording invalid
         # requests would pollute the drift signal with malformed
         # data rather than reflecting real traffic patterns.
+        # Cheap, in-memory, kept on the event loop rather than
+        # offloaded — no meaningful CPU cost.
         drift_monitor.record(input_data)
 
-        # Run full prediction pipeline
-        # pipeline was loaded once at startup — reused here
-        result = pipeline.predict(input_data)
+        # Run the actual (CPU-bound) prediction pipeline in the
+        # explicit thread pool, not inline on the event loop.
+        # pipeline was loaded once at startup — reused here.
+        # await releases control back to the event loop while this
+        # runs, so other requests' I/O (logging, drift recording,
+        # health/version checks) aren't blocked waiting behind it.
+        loop = asyncio.get_running_loop()
+        result = await loop.run_in_executor(predict_executor, pipeline.predict, input_data)
 
         # Attach API version here, at the serving layer — not inside
         # pipeline.py. The pipeline is pure ML logic and shouldn't need

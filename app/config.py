@@ -12,6 +12,9 @@
 # let you override a value locally (or in a deployment environment)
 # without touching code or rebuilding the image.
 
+import os
+
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +50,17 @@ class Settings(BaseSettings):
     # want a larger window for a more stable signal).
     drift_window_size: int = 500
     drift_z_threshold: float = 2.0
+
+    # Explicit thread pool size for offloading CPU-bound /predict
+    # work, rather than relying on Starlette's hidden default
+    # sync-endpoint thread pool cap (~40, undocumented in practice).
+    # Default heuristic: 5x CPU count — numpy/pandas/xgboost release
+    # the GIL during their actual C-level computation, so more
+    # threads than raw core count can still yield real wall-clock
+    # throughput up to genuine CPU saturation. Override via
+    # PREDICT_THREAD_POOL_SIZE if empirically tuned differently for
+    # your actual hardware — see load_tests/LOAD_TEST_RESULTS.md.
+    predict_thread_pool_size: int = Field(default_factory=lambda: (os.cpu_count() or 1) * 5)
 
     # SettingsConfigDict tells pydantic-settings to also read from a
     # .env file if one exists in the working directory, in addition
