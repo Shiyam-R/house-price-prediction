@@ -2,6 +2,10 @@
 
 [![CI Pipeline](https://github.com/Shiyam-R/house-price-prediction/actions/workflows/ci.yml/badge.svg)](https://github.com/Shiyam-R/house-price-prediction/actions/workflows/ci.yml)
 
+**🔗 Live demo: [house-price-prediction-api-5s2m.onrender.com/docs](https://house-price-prediction-api-5s2m.onrender.com/docs)**
+
+> Deployed on Render's free tier, which spins down after 15 minutes of inactivity. The first request after idle time can take 30-50 seconds to wake the service back up — subsequent requests are fast. This is a free-tier hosting tradeoff, not an application performance issue (see [`load_tests/LOAD_TEST_RESULTS.md`](load_tests/LOAD_TEST_RESULTS.md) for real latency numbers once warm).
+
 A production-style, end-to-end machine learning system that predicts house sale prices from the Ames Housing dataset — served via a FastAPI REST API, containerized with Docker, and continuously validated through a GitHub Actions CI/CD pipeline.
 
 This project isn't just a trained model in a notebook. It's the full path from raw data to a running, testable, deployable service:
@@ -33,6 +37,7 @@ This project isn't just a trained model in a notebook. It's the full path from r
 | API | FastAPI, Uvicorn, Pydantic |
 | Containerization | Docker (multi-stage build) |
 | CI/CD | GitHub Actions |
+| Deployment | Render (free tier), image also published to GitHub Container Registry |
 | Testing | pytest |
 
 ## Environment Configuration
@@ -131,6 +136,8 @@ docker run -p 8000:8000 house-price-api
 ```
 
 Visit `http://localhost:8000/health` to confirm the service is running.
+
+Prefer not to run it locally? The [live demo](https://house-price-prediction-api-5s2m.onrender.com/docs) above runs this exact image.
 
 ## Example Request
 
