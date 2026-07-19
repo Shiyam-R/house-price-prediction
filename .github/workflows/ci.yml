@@ -29,7 +29,17 @@
 #     10. Build the image and scan it with Trivy for OS-level
 #         package vulnerabilities in the base image — pip-audit
 #         only sees Python packages, not the underlying Debian
-#         packages python:3.13-slim ships with
+#         packages python:3.13-slim ships with. Blocks the pipeline
+#         (exit-code 1) only on CRITICAL/HIGH findings that have an
+#         actual available fix (ignore-unfixed: true) — Debian slim
+#         images routinely carry CVEs with no patch shipped yet,
+#         and failing CI on those doesn't improve security, just
+#         produces a permanently red pipeline for reasons outside
+#         this project's control.
+#     11. A second, non-blocking Trivy run reports ALL findings
+#         (including unfixed ones) for visibility, without ever
+#         failing the pipeline — so unfixed CVEs stay reviewable
+#         rather than silently hidden.
 #
 #   JOB 3 — publish-image (only on pushes to main, only if BOTH
 #           build-and-test AND security-scan fully passed)
@@ -212,13 +222,41 @@ jobs:
       # keeps the check meaningful rather than something to click
       # past. exit-code: 1 means a genuine CRITICAL/HIGH finding
       # fails the pipeline, not just prints a report nobody reads.
+      #
+      # ignore-unfixed: true is deliberate and important. Debian's
+      # slim base images routinely carry CVEs in OS packages
+      # (bsdutils, perl-base, ncurses, etc.) for which Debian has
+      # not yet shipped a patched version — Trivy reports these
+      # with status "affected" or "fix_deferred" and an EMPTY
+      # "Fixed Version" column. There is no available upgrade to
+      # apply for these; failing CI on them doesn't improve
+      # security, it just produces a permanently red pipeline for
+      # reasons outside this project's control. ignore-unfixed
+      # scopes the blocking check to vulnerabilities that DO have
+      # a fix available and simply haven't been picked up yet
+      # (e.g. by rebuilding against a newer base image) — that is
+      # the genuinely actionable definition of "unpatched".
       - name: Scan image with Trivy
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: house-price-api:scan-${{ github.sha }}
           format: table
           severity: CRITICAL,HIGH
+          ignore-unfixed: true
           exit-code: '1'
+
+      # Separate, NON-blocking scan for full visibility, including
+      # unfixed vulnerabilities. This always prints its findings to
+      # the job log (exit-code 0 — it can never fail the pipeline)
+      # so unfixed CVEs remain visible for periodic manual review,
+      # rather than being silently hidden by ignore-unfixed above.
+      - name: Report all vulnerabilities, including unfixed (informational only)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: house-price-api:scan-${{ github.sha }}
+          format: table
+          severity: CRITICAL,HIGH
+          exit-code: '0'
 
   # ── JOB 3 — PUBLISH IMAGE (CD) ──────────────────────────────
   # This is the actual "Continuous Deployment" half of the pipeline.
